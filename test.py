@@ -1,8 +1,8 @@
-from pathlib import Path
 import cv2
 import numpy as np
+from pathlib import Path
 from utils import rgb_to_ycgcr, is_skin_color
-from detection_with_boundary import (
+from detection import (
     detect_face_and_eye_region,
     compute_redness,
     binarize_redness,
@@ -10,11 +10,11 @@ from detection_with_boundary import (
     compute_adaptive_kernel_size,
     apply_closing,
     label_components,
-    shape_filter,
-    region_growing as region_growing_with_boundary
+    shape_filter
 )
+from detection_with_boundary import region_growing as region_growing_with_boundary
 from detection_no_boundary import region_growing as region_growing_no_boundary
-
+from correction import detect_iris, calculate_pupil_size
 
 def run_pipeline():
     data_dir = Path("data")
@@ -132,6 +132,29 @@ def run_pipeline():
             expanded_mask_no = region_growing_no_boundary(approved_labels, label_matrix, stats, centroids, redness, rf_crop, info['face'])
             print(f"      Expanded mask (Without Boundary) pixels count: {np.sum(expanded_mask_no > 0)}")
             cv2.imwrite(str(output_dir / f"{base_name}_face_{idx}_expanded_no_boundary.png"), expanded_mask_no)
+            
+            # Test detect_iris on each approved label
+            for label in approved_labels:
+                # Grow this component individually to isolate it
+                expanded_mask_label = region_growing_with_boundary([label], label_matrix, stats, centroids, redness, rf_crop, info['face'])
+                d_iris, center_crop = detect_iris(expanded_mask_label, rf_crop)
+                print(f"      [Iris Detection] Label #{label} - Iris diameter: {d_iris:.2f}px, Center in crop: {center_crop}")
+                
+                # Test calculate_pupil_size
+                d_pupil = calculate_pupil_size(d_iris)
+                print(f"      [Pupil Calculation] Target Pupil diameter: {d_pupil:.2f}px")
+                
+                # Draw the detected iris circle on the full image visualization (blue)
+                cx_full = center_crop[0] + x
+                cy_full = center_crop[1] + y
+                r_iris = int(round(d_iris / 2.0))
+                cv2.circle(img_vis, (cx_full, cy_full), r_iris, (255, 0, 0), 2)
+                
+                # Draw target pupil boundary (green)
+                r_pupil_target = int(round(d_pupil / 2.0))
+                cv2.circle(img_vis, (cx_full, cy_full), r_pupil_target, (0, 255, 0), 1)
+                
+                cv2.circle(img_vis, (cx_full, cy_full), 2, (0, 255, 255), -1)
             
         cv2.imwrite(str(output_dir / f"{base_name}_vis_detection.png"), img_vis)
         
