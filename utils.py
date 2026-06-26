@@ -17,9 +17,9 @@ def rgb_to_ycgcr(img):
     
     return Y, Cg_prime, Cr_prime
 
-def is_skin_color(ycgcr):
-    _, Cg_prime, Cr_prime = ycgcr
+def is_skin_color(cg_prime, cr_prime):
     return (
-        (Cg_prime >= 125.0) & (Cg_prime <= 140.0) &
-        (Cr_prime >= 136.0) & (Cr_prime <= 217.0)
+        (cg_prime >= 125.0) & (cg_prime <= 140.0) &
+        (cr_prime >= 136.0) & (cr_prime <= 217.0)
     )
+

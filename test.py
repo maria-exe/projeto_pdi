@@ -2,7 +2,19 @@ from pathlib import Path
 import cv2
 import numpy as np
 from utils import rgb_to_ycgcr, is_skin_color
-from detection import detect_face_and_eye_region, compute_redness
+from detection_with_boundary import (
+    detect_face_and_eye_region,
+    compute_redness,
+    binarize_redness,
+    remove_skin,
+    compute_adaptive_kernel_size,
+    apply_closing,
+    label_components,
+    shape_filter,
+    region_growing as region_growing_with_boundary
+)
+from detection_no_boundary import region_growing as region_growing_no_boundary
+
 
 def run_pipeline():
     data_dir = Path("data")
@@ -35,7 +47,7 @@ def run_pipeline():
         base_name = filepath.stem
         
         Y, Cg_prime, Cr_prime = rgb_to_ycgcr(img_bgr)
-        skin_mask = is_skin_color((Y, Cg_prime, Cr_prime))
+        skin_mask = is_skin_color(Cg_prime, Cr_prime)
         
         total_pixels = skin_mask.size
         skin_pixels = np.sum(skin_mask)
@@ -78,6 +90,48 @@ def run_pipeline():
             
             redness_vis = normalize_channel(redness)
             cv2.imwrite(str(output_dir / f"{base_name}_face_{idx}_redness.png"), redness_vis)
+            
+            # Test skin extraction for the crop
+            _, cg_crop, cr_crop = rgb_to_ycgcr(rf_crop)
+            skin_mask_crop = is_skin_color(cg_crop, cr_crop)
+            
+            # Test binarize_redness + remove_skin
+            redness_mask = binarize_redness(redness)
+            skin_removed_mask = remove_skin(redness_mask, skin_mask_crop)
+            print(f"      Skin-removed red pixels count: {np.sum(skin_removed_mask)}")
+            cv2.imwrite(str(output_dir / f"{base_name}_face_{idx}_skin_removed.png"), (skin_removed_mask * 255).astype(np.uint8))
+            
+            # Test adaptive closing
+            kernel_size = compute_adaptive_kernel_size(face_w)
+            closed_mask = apply_closing(skin_removed_mask, kernel_size=kernel_size)
+            print(f"      Adaptive kernel size: {kernel_size}")
+            print(f"      Closed mask pixels count: {np.sum(closed_mask)}")
+            cv2.imwrite(str(output_dir / f"{base_name}_face_{idx}_closed.png"), (closed_mask * 255).astype(np.uint8))
+            
+            # Test label_components (connectedComponentsWithStats)
+            num_labels, label_matrix, stats, centroids = label_components(closed_mask)
+            print(f"      Connected components: {num_labels} (including background)")
+            if num_labels > 1:
+                label_vis = ((label_matrix.astype(np.float32) / (num_labels - 1)) * 255.0).astype(np.uint8)
+            else:
+                label_vis = np.zeros_like(label_matrix, dtype=np.uint8)
+            cv2.imwrite(str(output_dir / f"{base_name}_face_{idx}_labels.png"), label_vis)
+            
+            # Test shape_filter
+            approved_labels = shape_filter(stats, num_labels, info['face'])
+            print(f"      Approved components labels: {approved_labels}")
+            approved_mask = np.isin(label_matrix, approved_labels)
+            cv2.imwrite(str(output_dir / f"{base_name}_face_{idx}_approved.png"), (approved_mask * 255).astype(np.uint8))
+            
+            # Test region_growing (with boundary)
+            expanded_mask_with = region_growing_with_boundary(approved_labels, label_matrix, stats, centroids, redness, rf_crop, info['face'])
+            print(f"      Expanded mask (With Boundary) pixels count: {np.sum(expanded_mask_with > 0)}")
+            cv2.imwrite(str(output_dir / f"{base_name}_face_{idx}_expanded_with_boundary.png"), expanded_mask_with)
+            
+            # Test region_growing (without boundary)
+            expanded_mask_no = region_growing_no_boundary(approved_labels, label_matrix, stats, centroids, redness, rf_crop, info['face'])
+            print(f"      Expanded mask (Without Boundary) pixels count: {np.sum(expanded_mask_no > 0)}")
+            cv2.imwrite(str(output_dir / f"{base_name}_face_{idx}_expanded_no_boundary.png"), expanded_mask_no)
             
         cv2.imwrite(str(output_dir / f"{base_name}_vis_detection.png"), img_vis)
         
