@@ -18,7 +18,7 @@ from correction import (
     inpaint_exemplar, paint_pupil_and_highlight, smooth_boundaries
 )
 
-IMAGES = ["teste1.png", "teste2.jpg", "teste3.jpg", "teste5.jpg", "teste6.jpg"]
+IMAGES = ["teste1.png", "teste2.jpg", "teste3.jpg", "teste5.jpg", "teste6.jpg", "teste7.jpg", "teste8.jpg", "teste9.jpg", "teste10.jpg", "teste11.jpg", "teste12.jpg", "teste13.jpg", "teste14.jpg", "teste15.png"]
 
 
 # Normaliza os valores de intensidade de um canal para o intervalo [0, 255]
