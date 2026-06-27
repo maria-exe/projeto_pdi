@@ -6,18 +6,21 @@ def detect_iris(expanded_mask, img_rf, param2=20, tau_g=40.0):
     if np.max(mask_uint8) == 1:
         mask_uint8 = mask_uint8 * 255
         
+    # Detecta as bordas na mascara dilatada do olho
     edges = cv2.Canny(mask_uint8, 100, 200)
     
     H, W = mask_uint8.shape
     min_r = max(3, int(round(min(H, W) * 0.05)))
     max_r = int(round(min(H, W) * 0.3))
     
+    # Encontra o centro de massa da mascara para usar como coordenadas de partida
     coords = np.argwhere(mask_uint8 > 0)
     if len(coords) > 0:
         cy_mask, cx_mask = coords.mean(axis=0)
     else:
         cy_mask, cx_mask = H / 2, W / 2
         
+    # Aplica a Transformada de Hough para encontrar candidatos a circulos da pupila
     circles = cv2.HoughCircles(
         edges, 
         cv2.HOUGH_GRADIENT, 
@@ -29,6 +32,7 @@ def detect_iris(expanded_mask, img_rf, param2=20, tau_g=40.0):
         maxRadius=max_r
     )
     
+    # Seleciona o circulo mais proximo do centro da mascara ou estima via propriedades da mascara
     if circles is not None:
         circles = circles[0]
         dists = (circles[:, 0] - cx_mask)**2 + (circles[:, 1] - cy_mask)**2
@@ -43,6 +47,7 @@ def detect_iris(expanded_mask, img_rf, param2=20, tau_g=40.0):
             
     r_pupil = max(3, r_pupil)
     
+    # Calcula os gradientes Sobel na direcao horizontal para detectar a transicao iris-esclera
     B_grad = cv2.Sobel(img_rf[..., 0], cv2.CV_64F, 1, 0, ksize=3)
     G_grad = cv2.Sobel(img_rf[..., 1], cv2.CV_64F, 1, 0, ksize=3)
     R_grad = cv2.Sobel(img_rf[..., 2], cv2.CV_64F, 1, 0, ksize=3)
@@ -62,6 +67,7 @@ def detect_iris(expanded_mask, img_rf, param2=20, tau_g=40.0):
     
     profile = np.max(g_joint[y_min:y_max, :], axis=0)
     
+    # Busca a borda esquerda da iris
     d_left = None
     left_start = max(0, cx - max_dist)
     left_end = max(0, cx - min_dist)
@@ -74,6 +80,7 @@ def detect_iris(expanded_mask, img_rf, param2=20, tau_g=40.0):
             peak_idx = np.argmax(left_masked)
             d_left = cx - (left_start + peak_idx)
             
+    # Busca a borda direita da iris
     d_right = None
     right_start = min(W - 1, cx + min_dist)
     right_end = min(W - 1, cx + max_dist)
@@ -88,6 +95,7 @@ def detect_iris(expanded_mask, img_rf, param2=20, tau_g=40.0):
             
     fallback_reasons = []
     
+    # Caso alguma borda nao seja detectada, utiliza estimativas geometricas proporcionais
     if d_left is None:
         d_left = int(round(1.5 * r_pupil))
         fallback_reasons.append("Borda direita nao encontrada")
@@ -105,6 +113,7 @@ def detect_iris(expanded_mask, img_rf, param2=20, tau_g=40.0):
     if fallback_reasons:
         print(f"[Aviso] Deteccao de esclera falhou, usando valor estimado: {', '.join(fallback_reasons)}")
         
+    # Calcula o raio e diametro finais da iris
     r_iris = (d_left + d_right) / 2.0
     d_iris = 2.0 * r_iris
 
@@ -114,17 +123,20 @@ def calculate_pupil_size(d_iris, r_pi=0.5507):
     return max(1.0, float(d_iris * r_pi))
 
 
+# Realiza o preenchimento (inpainting) baseado em exemplos para remover a area vermelha do olho
 def inpaint_exemplar(img_rf, expanded_mask, patch_size=3, search_size=7):
     img_out = img_rf.copy()
     H, W, C = img_out.shape
     M = (expanded_mask > 0).astype(bool)
     
+    # Encontra o centro da mascara para calcular prioridades de preenchimento
     coords = np.argwhere(M)
     if len(coords) > 0:
         xc_y, xc_x = coords.mean(axis=0)
     else:
         xc_y, xc_x = H / 2.0, W / 2.0
         
+    # Obtem gradientes de intensidade 2D da imagem para comparar texturas
     gray = cv2.cvtColor(img_out, cv2.COLOR_BGR2GRAY).astype(np.float32)
     gx = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
     gy = cv2.Sobel(gray, cv2.CV_32F, 0, 1, ksize=3)
@@ -136,6 +148,7 @@ def inpaint_exemplar(img_rf, expanded_mask, patch_size=3, search_size=7):
                        [1, 1, 1],
                        [0, 1, 0]], dtype=np.uint8)
     
+    # Processa os pixels da mascara de fora para dentro ate preencher por completo
     while np.any(M):
         eroded = cv2.erode(M.astype(np.uint8), struct, borderType=cv2.BORDER_CONSTANT, borderValue=0)
         boundary = (M.astype(np.uint8) - eroded) > 0
@@ -154,11 +167,13 @@ def inpaint_exemplar(img_rf, expanded_mask, patch_size=3, search_size=7):
         best_v = None
         min_dist = float('inf')
         
+        # Limita a area de busca ao redor do pixel alvo
         r_start = max(0, uy - hs)
         r_end = min(H - 1, uy + hs)
         c_start = max(0, ux - hs)
         c_end = min(W - 1, ux + hs)
         
+        # Busca o melhor patch de origem nao mascarado
         for vr in range(r_start, r_end + 1):
             for vc in range(c_start, c_end + 1):
                 if M[vr, vc]:
@@ -167,6 +182,7 @@ def inpaint_exemplar(img_rf, expanded_mask, patch_size=3, search_size=7):
                 sum_diff = 0.0
                 count = 0
                 
+                # Compara o patch doador com o patch receptor
                 for dr in range(-hp, hp + 1):
                     for dc in range(-hp, hp + 1):
                         tr, tc = uy + dr, ux + dc
@@ -174,11 +190,13 @@ def inpaint_exemplar(img_rf, expanded_mask, patch_size=3, search_size=7):
                         
                         if 0 <= tr < H and 0 <= tc < W and 0 <= sr < H and 0 <= sc < W:
                             if not M[tr, tc] and not M[sr, sc]:
+                                # Calcula diferenca de cores
                                 db = float(img_out[tr, tc, 0]) - float(img_out[sr, sc, 0])
                                 dg = float(img_out[tr, tc, 1]) - float(img_out[sr, sc, 1])
                                 dr_val = float(img_out[tr, tc, 2]) - float(img_out[sr, sc, 2])
                                 color_diff_sq = db*db + dg*dg + dr_val*dr_val
                                 
+                                # Calcula diferenca de gradientes (textura)
                                 dgx = gx[tr, tc] - gx[sr, sc]
                                 dgy = gy[tr, tc] - gy[sr, sc]
                                 grad_diff_sq = dgx*dgx + dgy*dgy
@@ -192,6 +210,7 @@ def inpaint_exemplar(img_rf, expanded_mask, patch_size=3, search_size=7):
                         min_dist = dist
                         best_v = (vr, vc)
                         
+        # Caso nao encontre nenhum patch valido localmente, usa o vizinho nao mascarado mais proximo
         if best_v is None:
             outside_coords = np.argwhere(~M)
             
@@ -202,6 +221,7 @@ def inpaint_exemplar(img_rf, expanded_mask, patch_size=3, search_size=7):
             else:
                 break
                 
+        # Copia a informacao do patch doador para o receptor e atualiza a mascara
         vr, vc = best_v
         img_out[uy, ux] = img_out[vr, vc]
         gx[uy, ux] = gx[vr, vc]
@@ -217,13 +237,16 @@ def paint_pupil_and_highlight(img_inpainted, center, d_pupil, d_iris=None):
     H, W, C = img_out.shape
     cx, cy = center
     
+    # Gera a matriz de distancias euclidianas em relacao ao centro
     y_indices, x_indices = np.indices((H, W))
     dists_sq = (x_indices - cx)**2 + (y_indices - cy)**2
     
+    # Desenha a regiao escura da pupila
     r_pupil_sq = (d_pupil / 2.0)**2
     pupil_mask = dists_sq < r_pupil_sq
     img_out[pupil_mask] = [27, 27, 27]
     
+    # Desenha um reflexo de luz branco no centro da pupila para maior realismo
     d_highlight = d_pupil / 4.0
     r_highlight_sq = (d_highlight / 2.0)**2
     highlight_mask = dists_sq < r_highlight_sq
@@ -231,7 +254,7 @@ def paint_pupil_and_highlight(img_inpainted, center, d_pupil, d_iris=None):
     
     return img_out
 
-# Suaviza os pixels da correcao da pupila
+# Suaviza os pixels da correcao
 def smooth_boundaries(img_painted, center, d_iris, d_pupil):
     img_out = img_painted.copy()
     H, W, C = img_out.shape
@@ -250,6 +273,7 @@ def smooth_boundaries(img_painted, center, d_iris, d_pupil):
     
     r_iris = d_iris / 2.0
 
+    # Combina a imagem suavizada na transicao externa da iris
     smooth_mask = dists_sq < (r_iris)**1.95
     img_out[smooth_mask] = img_blurred[smooth_mask]
     

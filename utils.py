@@ -14,12 +14,12 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Converte RGB para espaco ycgcr
 def rgb_to_ycgcr(img):
-    # usa BGR, padrao da biblioteca cv2    
+    # Usa BGR, padrao da biblioteca cv2    
     B = img[..., 0].astype(np.float32)
     G = img[..., 1].astype(np.float32)
     R = img[..., 2].astype(np.float32)
     
-    # matriz de conversao
+    # Matriz de conversao
     Y = 0.257 * R + 0.504 * G + 0.098 * B + 16.0
     Cg = -0.317 * R + 0.438 * G - 0.121 * B + 128.0
     Cr = 0.439 * R - 0.368 * G - 0.071 * B + 128.0
@@ -77,7 +77,7 @@ def save_comparison_grid(steps_dict, output_path):
     if height is None or width is None:
         raise ValueError("steps_dict nao tem imagens validas")
         
-    # normaliza cada imagem para o formato BGR uint8
+    # Normaliza cada imagem para o formato BGR uint8
     processed_imgs = []
     for name, img in steps_dict.items():
         if img is None:
@@ -109,7 +109,7 @@ def save_comparison_grid(steps_dict, output_path):
             img_bgr = img.copy()
             
 
-        # redimensiona, desenha uma faixa no topo de cada imagem e escreve o nome da etapa nela
+        # Redimensiona, desenha uma faixa no topo de cada imagem e escreve o nome da etapa nela
         img_resized = cv2.resize(img_bgr, (width, height), interpolation=cv2.INTER_NEAREST)
         
         cv2.rectangle(img_resized, (2, 2), (width - 2, 20), (0, 0, 0), -1)
@@ -159,6 +159,6 @@ def evaluate_metrics(ground_truth, detections, tolerance=10.0):
             
     correctly_detected = sum(gt_matched)
     detection_rate = float(correctly_detected) / len(ground_truth)
-    false_alarms = len(detections) - sum(det_matched) # deteccões que sobraram sem par
+    false_alarms = len(detections) - sum(det_matched) # Deteccoes que sobraram sem par
     
     return detection_rate, false_alarms

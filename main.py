@@ -21,6 +21,7 @@ from correction import (
 IMAGES = ["teste1.png", "teste2.jpg", "teste3.jpg", "teste5.jpg", "teste6.jpg"]
 
 
+# Normaliza os valores de intensidade de um canal para o intervalo [0, 255]
 def normalize_channel(channel):
     c_min, c_max = channel.min(), channel.max()
     if c_max - c_min > 0:
@@ -32,6 +33,7 @@ def process_image(img_bgr, base_name, face_cascade):
     img_corrected = img_bgr.copy()
     img_vis       = img_bgr.copy()
 
+    # Detecta tons de pele na imagem completa
     _, Cg_line, Cr_line = rgb_to_ycgcr(img_bgr)
     skin_mask = is_skin_color(Cg_line, Cr_line)
     write_image(f"{base_name}_mascara.png",
@@ -44,17 +46,22 @@ def process_image(img_bgr, base_name, face_cascade):
         x, y, w, h       = info['x'], info['y'], info['w'], info['h']
         face_x, face_y, face_w, face_h = info['face']
 
+        # Retangulo verde nos rostos e vermelho nas regioes dos olhos
         cv2.rectangle(img_vis, (face_x, face_y),
                       (face_x + face_w, face_y + face_h), (0, 255, 0), 2)
         cv2.rectangle(img_vis, (x, y), (x + w, y + h), (0, 0, 255), 2)
 
+        # Recorta a regiao dos olhos detectada
         rf_crop = img_bgr[y:y+h, x:x+w]
 
+        # Executa a binarizacao e remocao de pele na regiao recortada
         redness          = compute_redness(rf_crop)
         _, cg_crop, cr_crop = rgb_to_ycgcr(rf_crop)
         skin_mask_crop   = is_skin_color(cg_crop, cr_crop)
         redness_mask     = binarize_redness(redness)
         skin_removed     = remove_skin(redness_mask, skin_mask_crop)
+        
+        # Aplica operadores morfologicos e rotulacao de componentes conexos
         kernel_size      = compute_adaptive_kernel_size(face_w)
         closed_mask      = apply_closing(skin_removed, kernel_size=kernel_size)
         num_labels, label_matrix, stats, centroids = label_components(closed_mask)
@@ -76,6 +83,7 @@ def process_image(img_bgr, base_name, face_cascade):
         combined_mask  = np.zeros(rf_crop.shape[:2], dtype=np.uint8)
         iris_info      = {}
 
+        # Processa cada olho vermelho aprovado aplicando crescimento de regiao
         for label in approved_labels:
             exp_mask = region_growing(
                 [label], label_matrix, redness, rf_crop, info['face']
@@ -90,11 +98,13 @@ def process_image(img_bgr, base_name, face_cascade):
             print(f"Label #{label} — d_iris: {d_iris:.1f}px  "
                   f"d_pupil: {d_pupil:.1f}px  center: {center}")
 
+            # Desenha circulo azul contornando a iris na imagem de visualizacao
             cx_full = center[0] + x
             cy_full = center[1] + y
             cv2.circle(img_vis, (cx_full, cy_full),
                        int(round(d_iris / 2)), (255, 0, 0), 2)
 
+        # Remove a cor vermelha da regiao dos olhos
         corrected_crop = inpaint_exemplar(rf_crop, combined_mask)
 
         for label in approved_labels:
@@ -104,6 +114,7 @@ def process_image(img_bgr, base_name, face_cascade):
             corrected_crop = smooth_boundaries(
                 corrected_crop, center, d_iris, d_pupil)
 
+        # Salva o corte do olho corrigido e remonta na imagem principal de saida
         write_image(
             f"{base_name}_cortado.png",
             corrected_crop)
@@ -113,6 +124,7 @@ def process_image(img_bgr, base_name, face_cascade):
     write_image(f"{base_name}_corrigido.png", img_corrected)
 
 
+# Inicializa o detector Haar Cascade e executa o processamento para todas as imagens de teste
 def run_pipeline():
     cascade_path = Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"
     face_cascade = cv2.CascadeClassifier(str(cascade_path))
