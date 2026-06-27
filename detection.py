@@ -81,7 +81,8 @@ def shape_filter(stats, num_labels, face_bbox):
             
     return approved_labels
 
-def region_growing(approved_labels, label_matrix, stats, centroids, redness_map, img_rf, face_bbox, tau_r2=1.25, tau_l=250.0, growth_factor=1.55):
+def region_growing(approved_labels, label_matrix, stats, centroids, redness_map, img_rf, face_bbox, tau_r1=1.5, tau_l=250.0):
+    tau_r2 = tau_r1 * (5.0 / 6.0)
     current_mask = np.isin(label_matrix, approved_labels)
     
     if not np.any(current_mask):
@@ -90,34 +91,21 @@ def region_growing(approved_labels, label_matrix, stats, centroids, redness_map,
     Y, cg_prime, cr_prime = rgb_to_ycgcr(img_rf)
     skin_mask = is_skin_color(cg_prime, cr_prime)
     
-    boundary_mask = np.zeros(label_matrix.shape, dtype=np.uint8)
-    for label in approved_labels:
-        cx, cy = centroids[label]
-        area_i = stats[label, cv2.CC_STAT_AREA]
-        r_initial = np.sqrt(area_i / np.pi)
-        
-        face_width = face_bbox[2]
-        r_max = int(round(face_width / 20))
-               
-        cv2.circle(boundary_mask, (int(round(cx)), int(round(cy))), r_max, 1, thickness=-1)
-        
-    boundary_mask = boundary_mask.astype(bool)
-        
     struct_element = np.array([[0, 1, 0],
                                [1, 1, 1],
                                [0, 1, 0]], dtype=np.uint8)
                                
-    iteration = 1
+    iteration = 0
     while True:
         dilated = cv2.dilate(current_mask.astype(np.uint8), struct_element)
-        frontier = (dilated > 0) & (~current_mask) & boundary_mask
+        frontier = (dilated > 0) & (~current_mask)
         
         if not np.any(frontier):
             break
             
         cond_base = (redness_map > tau_r2) | (Y > tau_l)
         
-        if iteration <= 3:
+        if iteration < 3:
             admissable = frontier & cond_base
         else:
             admissable = frontier & cond_base & (~skin_mask)

@@ -81,7 +81,8 @@ def shape_filter(stats, num_labels, face_bbox):
             
     return approved_labels
 
-def region_growing(approved_labels, label_matrix, stats, centroids, redness_map, img_rf, face_bbox, tau_r2=1.25, tau_l=250.0, growth_factor=1.55):
+def region_growing(approved_labels, label_matrix, stats, centroids, redness_map, img_rf, face_bbox, tau_r1=1.5, tau_l=250.0, growth_factor=1.55):
+    tau_r2 = tau_r1 * (5.0 / 6.0)
     current_mask = np.isin(label_matrix, approved_labels)
     
     if not np.any(current_mask):
