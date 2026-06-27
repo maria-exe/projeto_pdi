@@ -65,9 +65,11 @@ def detect_iris(expanded_mask, img_rf, param2=20, tau_g=40.0):
     d_left = None
     left_start = max(0, cx - max_dist)
     left_end = max(0, cx - min_dist)
+    
     if left_end > left_start:
         left_profile = profile[left_start : left_end + 1]
         left_masked = np.where(left_profile > tau_g, left_profile, 0.0)
+        
         if np.max(left_masked) > 0.0:
             peak_idx = np.argmax(left_masked)
             d_left = cx - (left_start + peak_idx)
@@ -75,35 +77,36 @@ def detect_iris(expanded_mask, img_rf, param2=20, tau_g=40.0):
     d_right = None
     right_start = min(W - 1, cx + min_dist)
     right_end = min(W - 1, cx + max_dist)
+    
     if right_end > right_start:
         right_profile = profile[right_start : right_end + 1]
         right_masked = np.where(right_profile > tau_g, right_profile, 0.0)
+        
         if np.max(right_masked) > 0.0:
             peak_idx = np.argmax(right_masked)
             d_right = (right_start + peak_idx) - cx
             
     fallback_reasons = []
+    
     if d_left is None:
         d_left = int(round(1.5 * r_pupil))
-        fallback_reasons.append("d_left not found")
+        fallback_reasons.append("Borda direita nao encontrada")
     elif not (1.3 * r_pupil <= d_left <= 2.5 * r_pupil):
-        fallback_reasons.append(f"d_left={d_left} outside range [{1.3 * r_pupil:.1f}, {2.5 * r_pupil:.1f}]")
+        fallback_reasons.append(f"d_left={d_left} fora de faixa [{1.3 * r_pupil:.1f}, {2.5 * r_pupil:.1f}]")
         d_left = int(round(1.5 * r_pupil))
         
     if d_right is None:
         d_right = int(round(1.5 * r_pupil))
-        fallback_reasons.append("d_right not found")
+        fallback_reasons.append("Borda esquerda nao encontrada")
     elif not (1.3 * r_pupil <= d_right <= 2.5 * r_pupil):
-        fallback_reasons.append(f"d_right={d_right} outside range [{1.3 * r_pupil:.1f}, {2.5 * r_pupil:.1f}]")
+        fallback_reasons.append(f"d_right={d_right} fora de faixa [{1.3 * r_pupil:.1f}, {2.5 * r_pupil:.1f}]")
         d_right = int(round(1.5 * r_pupil))
         
     if fallback_reasons:
-        print(f"      [Warning] Sclera detection fallback used for iris size: {', '.join(fallback_reasons)}")
+        print(f"[Aviso] Deteccao de esclera falhou, usando valor estimado: {', '.join(fallback_reasons)}")
         
     r_iris = (d_left + d_right) / 2.0
     d_iris = 2.0 * r_iris
-
-    print(f"      [Debug] r_iris={r_iris:.1f}  d_iris={d_iris:.1f}")
 
     return float(d_iris), (int(cx), int(cy))
 
@@ -191,6 +194,7 @@ def inpaint_exemplar(img_rf, expanded_mask, patch_size=3, search_size=7):
                         
         if best_v is None:
             outside_coords = np.argwhere(~M)
+            
             if len(outside_coords) > 0:
                 dists = (outside_coords[:, 0] - uy)**2 + (outside_coords[:, 1] - ux)**2
                 fallback_idx = np.argmin(dists)
@@ -227,7 +231,7 @@ def paint_pupil_and_highlight(img_inpainted, center, d_pupil, d_iris=None):
     
     return img_out
 
-
+# Suaviza os pixels da correcao da pupila
 def smooth_boundaries(img_painted, center, d_iris, d_pupil):
     img_out = img_painted.copy()
     H, W, C = img_out.shape

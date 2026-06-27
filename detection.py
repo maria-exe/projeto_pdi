@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 from utils import rgb_to_ycgcr, is_skin_color
 
+# detecta rosto com viola-jones e para cada rosto calcula a região candidata dos olhos usando a grade 4×5
 def detect_face_and_eye_region(img, face_cascade):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     
@@ -11,7 +12,6 @@ def detect_face_and_eye_region(img, face_cascade):
         minNeighbors=5,
         minSize=(30, 30)
     )
-    
     results = []
     
     for (x, y, w, h) in faces:
@@ -20,19 +20,20 @@ def detect_face_and_eye_region(img, face_cascade):
         
         x_start = int(round(x + cw))
         y_start = int(round(y + ch))
-        w_rf = int(round(3.0 * cw))
-        h_rf = int(round(ch))
+        width = int(round(3.0 * cw))
+        height = int(round(ch))
         
         results.append({
             'x': x_start,
             'y': y_start,
-            'w': w_rf,
-            'h': h_rf,
+            'w': width,
+            'h': height,
             'face': (x, y, w, h)
         })
         
     return results
 
+# Implementa a medida de redness de Gaubatz e Ulichne 
 def compute_redness(img_rf, kr=1.0):
     B = img_rf[..., 0].astype(np.float32)
     G = img_rf[..., 1].astype(np.float32)
@@ -44,6 +45,7 @@ def compute_redness(img_rf, kr=1.0):
 def binarize_redness(redness_map, tau_r1=1.5):
     return redness_map > tau_r1
 
+# Remove da mascara de redness os pixels de pele
 def remove_skin(redness_mask, skin_mask):
     return redness_mask & (~skin_mask)
 
@@ -53,6 +55,7 @@ def compute_adaptive_kernel_size(face_width, factor=0.015):
         k_size += 1
     return max(3, k_size)
 
+# Preenche buracos e junta pedacos proximos que deveriam ser de apenas uma regiao
 def apply_closing(mask, kernel_size=5):
     mask_uint8 = mask.astype(np.uint8)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
@@ -81,15 +84,15 @@ def shape_filter(stats, num_labels, face_bbox):
             
     return approved_labels
 
-def region_growing(approved_labels, label_matrix, stats, centroids, redness_map, img_rf, face_bbox, tau_r1=1.5, tau_l=250.0):
+def region_growing(approved_labels, label_matrix, redness_map, img_rf, face_bbox, tau_r1=1.5, tau_l=250.0):
     tau_r2 = tau_r1 * (5.0 / 6.0)
     current_mask = np.isin(label_matrix, approved_labels)
     
     if not np.any(current_mask):
         return np.zeros(label_matrix.shape, dtype=np.uint8)
         
-    Y, cg_prime, cr_prime = rgb_to_ycgcr(img_rf)
-    skin_mask = is_skin_color(cg_prime, cr_prime)
+    Y, cg_line, cr_line = rgb_to_ycgcr(img_rf)
+    skin_mask = is_skin_color(cg_line, cr_line)
     
     struct_element = np.array([[0, 1, 0],
                                [1, 1, 1],

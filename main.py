@@ -3,8 +3,9 @@ import numpy as np
 from pathlib import Path
 from utils import (
     rgb_to_ycgcr, is_skin_color,
-    safe_read_image, safe_write_image,
-    save_comparison_grid
+    read_image, write_image,
+    save_comparison_grid,
+
 )
 from detection import (
     detect_face_and_eye_region,
@@ -17,9 +18,7 @@ from correction import (
     inpaint_exemplar, paint_pupil_and_highlight, smooth_boundaries
 )
 
-DATA_DIR   = Path("data")
-OUTPUT_DIR = Path("output")
-IMAGES     = ["teste1.png", "teste2.jpg","teste3.jpg", "teste4.jpg", "teste5.jpg", "teste6.jpg"]
+IMAGES = ["teste1.png", "teste2.jpg", "teste3.jpg", "teste5.jpg", "teste6.jpg"]
 
 
 def normalize_channel(channel):
@@ -33,13 +32,13 @@ def process_image(img_bgr, base_name, face_cascade):
     img_corrected = img_bgr.copy()
     img_vis       = img_bgr.copy()
 
-    _, Cg_prime, Cr_prime = rgb_to_ycgcr(img_bgr)
-    skin_mask = is_skin_color(Cg_prime, Cr_prime)
-    safe_write_image(OUTPUT_DIR / f"{base_name}_skin_mask.png",
+    _, Cg_line, Cr_line = rgb_to_ycgcr(img_bgr)
+    skin_mask = is_skin_color(Cg_line, Cr_line)
+    write_image(f"{base_name}_mascara.png",
                      (skin_mask * 255).astype(np.uint8))
 
     faces_info = detect_face_and_eye_region(img_bgr, face_cascade)
-    print(f"  Faces detected: {len(faces_info)}")
+    print(f"Rostos detectados: {len(faces_info)}")
 
     for idx, info in enumerate(faces_info):
         x, y, w, h       = info['x'], info['y'], info['w'], info['h']
@@ -61,8 +60,6 @@ def process_image(img_bgr, base_name, face_cascade):
         num_labels, label_matrix, stats, centroids = label_components(closed_mask)
         approved_labels  = shape_filter(stats, num_labels, info['face'])
 
-        print(f"  Face #{idx} — approved components: {approved_labels}")
-
         save_comparison_grid({
             "Original":     rf_crop,
             "Redness":      redness,
@@ -70,7 +67,7 @@ def process_image(img_bgr, base_name, face_cascade):
             "Closing":      closed_mask,
             "Labels":       label_matrix,
             "Shape Filter": np.isin(label_matrix, approved_labels),
-        }, OUTPUT_DIR / f"{base_name}_face_{idx}_steps.png")
+        }, f"{base_name}_face_{idx}_steps.png")
 
         if not approved_labels:
             continue
@@ -81,8 +78,7 @@ def process_image(img_bgr, base_name, face_cascade):
 
         for label in approved_labels:
             exp_mask = region_growing(
-                [label], label_matrix, stats, centroids,
-                redness, rf_crop, info['face']
+                [label], label_matrix, redness, rf_crop, info['face']
             )
             expanded_masks[label] = exp_mask
             combined_mask = cv2.bitwise_or(combined_mask, exp_mask)
@@ -91,7 +87,7 @@ def process_image(img_bgr, base_name, face_cascade):
             d_pupil        = calculate_pupil_size(d_iris)
             iris_info[label] = (d_iris, center, d_pupil)
 
-            print(f"    Label #{label} — d_iris: {d_iris:.1f}px  "
+            print(f"Label #{label} — d_iris: {d_iris:.1f}px  "
                   f"d_pupil: {d_pupil:.1f}px  center: {center}")
 
             cx_full = center[0] + x
@@ -108,35 +104,34 @@ def process_image(img_bgr, base_name, face_cascade):
             corrected_crop = smooth_boundaries(
                 corrected_crop, center, d_iris, d_pupil)
 
-        safe_write_image(
-            OUTPUT_DIR / f"{base_name}_face_{idx}_corrected_crop.png",
+        write_image(
+            f"{base_name}_cortado.png",
             corrected_crop)
         img_corrected[y:y+h, x:x+w] = corrected_crop
 
-    safe_write_image(OUTPUT_DIR / f"{base_name}_vis.png",      img_vis)
-    safe_write_image(OUTPUT_DIR / f"{base_name}_corrected.png", img_corrected)
+    write_image(f"{base_name}_vis.png",      img_vis)
+    write_image(f"{base_name}_corrigido.png", img_corrected)
 
 
 def run_pipeline():
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
     cascade_path = Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"
     face_cascade = cv2.CascadeClassifier(str(cascade_path))
     if face_cascade.empty():
-        raise IOError(f"Could not load classifier from: {cascade_path}")
+        raise IOError(f"Erro ao carregar classificador de: {cascade_path}")
 
     for filename in IMAGES:
-        filepath = DATA_DIR / filename
-        print(f"\nProcessing: {filename}")
+        print(f"Processando: {filename}")
+        
         try:
-            img_bgr = safe_read_image(filepath)
+            img_bgr = read_image(filename)
+        
         except Exception as e:
-            print(f"  Error: {e}")
+            print(f"Erro: {e}")
             continue
 
-        process_image(img_bgr, filepath.stem, face_cascade)
+        process_image(img_bgr, Path(filename).stem, face_cascade)
 
-    print("\nDone.")
+    print("\nProcessamento finalizado.")
 
 if __name__ == "__main__":
     run_pipeline()
