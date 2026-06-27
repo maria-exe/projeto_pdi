@@ -19,7 +19,7 @@ from correction import (
 
 DATA_DIR   = Path("data")
 OUTPUT_DIR = Path("output")
-IMAGES     = ["teste1.png", "teste2.jpg"]
+IMAGES     = ["teste1.png", "teste2.jpg","teste3.jpg", "teste4.jpg", "teste5.jpg", "teste6.jpg"]
 
 
 def normalize_channel(channel):
@@ -33,13 +33,11 @@ def process_image(img_bgr, base_name, face_cascade):
     img_corrected = img_bgr.copy()
     img_vis       = img_bgr.copy()
 
-    # --- Skin detection (full image, for reference) ---
     _, Cg_prime, Cr_prime = rgb_to_ycgcr(img_bgr)
     skin_mask = is_skin_color(Cg_prime, Cr_prime)
     safe_write_image(OUTPUT_DIR / f"{base_name}_skin_mask.png",
                      (skin_mask * 255).astype(np.uint8))
 
-    # --- Face + eye region detection ---
     faces_info = detect_face_and_eye_region(img_bgr, face_cascade)
     print(f"  Faces detected: {len(faces_info)}")
 
@@ -53,7 +51,6 @@ def process_image(img_bgr, base_name, face_cascade):
 
         rf_crop = img_bgr[y:y+h, x:x+w]
 
-        # --- Detection pipeline ---
         redness          = compute_redness(rf_crop)
         _, cg_crop, cr_crop = rgb_to_ycgcr(rf_crop)
         skin_mask_crop   = is_skin_color(cg_crop, cr_crop)
@@ -66,7 +63,6 @@ def process_image(img_bgr, base_name, face_cascade):
 
         print(f"  Face #{idx} — approved components: {approved_labels}")
 
-        # Save intermediate steps grid
         save_comparison_grid({
             "Original":     rf_crop,
             "Redness":      redness,
@@ -79,7 +75,6 @@ def process_image(img_bgr, base_name, face_cascade):
         if not approved_labels:
             continue
 
-        # --- Region growing (once per label, result reused) ---
         expanded_masks = {}
         combined_mask  = np.zeros(rf_crop.shape[:2], dtype=np.uint8)
         iris_info      = {}
@@ -104,7 +99,6 @@ def process_image(img_bgr, base_name, face_cascade):
             cv2.circle(img_vis, (cx_full, cy_full),
                        int(round(d_iris / 2)), (255, 0, 0), 2)
 
-        # --- Correction pipeline ---
         corrected_crop = inpaint_exemplar(rf_crop, combined_mask)
 
         for label in approved_labels:
@@ -143,7 +137,6 @@ def run_pipeline():
         process_image(img_bgr, filepath.stem, face_cascade)
 
     print("\nDone.")
-
 
 if __name__ == "__main__":
     run_pipeline()

@@ -53,8 +53,8 @@ def detect_iris(expanded_mask, img_rf, param2=20, tau_g=40.0):
     
     g_joint = np.minimum(np.minimum(g_R, g_G), g_B)
     
-    min_dist = int(round(1.8 * r_pupil))
-    max_dist = int(round(3.5 * r_pupil))
+    min_dist = int(round(1.3 * r_pupil))
+    max_dist = int(round(2.5 * r_pupil))
     
     margin = max(8, r_pupil // 2)
     y_min = max(0, cy - margin)
@@ -84,28 +84,30 @@ def detect_iris(expanded_mask, img_rf, param2=20, tau_g=40.0):
             
     fallback_reasons = []
     if d_left is None:
-        d_left = int(round(2.25 * r_pupil))
+        d_left = int(round(1.5 * r_pupil))
         fallback_reasons.append("d_left not found")
-    elif not (1.8 * r_pupil <= d_left <= 3.5 * r_pupil):
-        fallback_reasons.append(f"d_left={d_left} outside range [{1.8 * r_pupil:.1f}, {3.5 * r_pupil:.1f}]")
-        d_left = int(round(2.25 * r_pupil))
+    elif not (1.3 * r_pupil <= d_left <= 2.5 * r_pupil):
+        fallback_reasons.append(f"d_left={d_left} outside range [{1.3 * r_pupil:.1f}, {2.5 * r_pupil:.1f}]")
+        d_left = int(round(1.5 * r_pupil))
         
     if d_right is None:
-        d_right = int(round(2.25 * r_pupil))
+        d_right = int(round(1.5 * r_pupil))
         fallback_reasons.append("d_right not found")
-    elif not (1.8 * r_pupil <= d_right <= 3.5 * r_pupil):
-        fallback_reasons.append(f"d_right={d_right} outside range [{1.8 * r_pupil:.1f}, {3.5 * r_pupil:.1f}]")
-        d_right = int(round(2.25 * r_pupil))
+    elif not (1.3 * r_pupil <= d_right <= 2.5 * r_pupil):
+        fallback_reasons.append(f"d_right={d_right} outside range [{1.3 * r_pupil:.1f}, {2.5 * r_pupil:.1f}]")
+        d_right = int(round(1.5 * r_pupil))
         
     if fallback_reasons:
         print(f"      [Warning] Sclera detection fallback used for iris size: {', '.join(fallback_reasons)}")
         
     r_iris = (d_left + d_right) / 2.0
     d_iris = 2.0 * r_iris
-    
+
+    print(f"      [Debug] r_iris={r_iris:.1f}  d_iris={d_iris:.1f}")
+
     return float(d_iris), (int(cx), int(cy))
 
-def calculate_pupil_size(d_iris, r_pi=0.3316):
+def calculate_pupil_size(d_iris, r_pi=0.5507):
     return max(1.0, float(d_iris * r_pi))
 
 
@@ -216,12 +218,12 @@ def paint_pupil_and_highlight(img_inpainted, center, d_pupil, d_iris=None):
     
     r_pupil_sq = (d_pupil / 2.0)**2
     pupil_mask = dists_sq < r_pupil_sq
-    img_out[pupil_mask] = [10, 10, 10]
+    img_out[pupil_mask] = [27, 27, 27]
     
     d_highlight = d_pupil / 4.0
     r_highlight_sq = (d_highlight / 2.0)**2
     highlight_mask = dists_sq < r_highlight_sq
-    img_out[highlight_mask] = [255, 255, 255]
+    img_out[highlight_mask] = [235, 235, 235]
     
     return img_out
 
@@ -237,12 +239,14 @@ def smooth_boundaries(img_painted, center, d_iris, d_pupil):
     kernel = np.array([[1, 2, 1],
                        [2, 4, 2],
                        [1, 2, 1]], dtype=np.float32) / 16.0
-    img_blurred = cv2.filter2D(img_out, -1, kernel, borderType=cv2.BORDER_REPLICATE)
     
-    r_pupil = d_pupil / 2.0
+    img_blurred = img_out.copy()
+    for _ in range(3):
+        img_blurred = cv2.filter2D(img_blurred, -1, kernel, borderType=cv2.BORDER_REPLICATE)
+    
     r_iris = d_iris / 2.0
-    
-    smooth_mask = (dists_sq >= r_pupil**2) & (dists_sq < r_iris**2)
+
+    smooth_mask = dists_sq < (r_iris)**1.95
     img_out[smooth_mask] = img_blurred[smooth_mask]
     
     return img_out
