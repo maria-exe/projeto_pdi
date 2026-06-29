@@ -18,16 +18,8 @@ from correction import (
     inpaint_exemplar, paint_pupil_and_highlight, smooth_boundaries
 )
 
-IMAGES = ["teste1.png", "teste2.jpg", "teste3.jpg", "teste5.jpg", "teste6.jpg", "teste7.jpg", "teste8.jpg", "teste9.jpg", "teste10.jpg", "teste11.jpg", "teste12.jpg", "teste13.jpg", "teste14.jpg", "teste15.png"]
-
-
-# Normaliza os valores de intensidade de um canal para o intervalo [0, 255]
-def normalize_channel(channel):
-    c_min, c_max = channel.min(), channel.max()
-    if c_max - c_min > 0:
-        return ((channel - c_min) / (c_max - c_min) * 255.0).astype(np.uint8)
-    return np.zeros_like(channel, dtype=np.uint8)
-
+IMAGES = ["teste1.png", "teste2.jpg", "teste3.jpg", "teste4.jpg", "teste5.jpg", "teste6.jpg", "teste7.jpg", "teste8.jpg", "teste9.jpg", "teste10.jpg", 
+          "teste11.jpg", "teste12.jpg", "teste13.jpg", "teste14.jpg", "teste15.png"]
 
 def process_image(img_bgr, base_name, face_cascade):
     img_corrected = img_bgr.copy()
@@ -122,7 +114,6 @@ def process_image(img_bgr, base_name, face_cascade):
 
     write_image(f"{base_name}_vis.png",      img_vis)
     write_image(f"{base_name}_corrigido.png", img_corrected)
-
 
 # Inicializa o detector Haar Cascade e executa o processamento para todas as imagens de teste
 def run_pipeline():

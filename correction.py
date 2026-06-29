@@ -122,7 +122,6 @@ def detect_iris(expanded_mask, img_rf, param2=20, tau_g=40.0):
 def calculate_pupil_size(d_iris, r_pi=0.5507):
     return max(1.0, float(d_iris * r_pi))
 
-
 # Realiza o preenchimento (inpainting) baseado em exemplos para remover a area vermelha do olho
 def inpaint_exemplar(img_rf, expanded_mask, patch_size=3, search_size=7):
     img_out = img_rf.copy()
